@@ -941,6 +941,7 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
      * The first thing we should figure out is the depth, bpp, etc.
      * We support both 24bpp and 32bpp layouts, so indicate that.
      */
+#ifndef __NetBSD__
     if (FBDevProbed) {
 	int default_depth, fbbpp;
 	
@@ -951,7 +952,9 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 	default_depth = fbdevHWGetDepth(pScrn,&fbbpp);
 	if (!xf86SetDepthBpp(pScrn, default_depth, default_depth, fbbpp,0))
 		return FALSE;
-    } else {
+    } else
+#endif /* __NetBSD__ */
+    {
 	if (!xf86SetDepthBpp(pScrn, 0, 0, 0, Support24bppFb | Support32bppFb 
 	 	/*| SupportConvert32to24 | PreferConvert32to24*/))
 		return FALSE;
@@ -1068,6 +1071,7 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 			    ((pScrn->mask.blue - 1) << 0);
     }
 
+#ifndef __NetBSD__
     /* Check whether to use the FBDev stuff and fill in the rest of pScrn */
     if (xf86ReturnOptValBool(pGlint->Options, OPTION_FBDEV, FALSE)) {
     	if (!FBDevProbed && !xf86LoadSubModule(pScrn, "fbdevhw"))
@@ -1089,7 +1093,9 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 	pScrn->LeaveVT		= fbdevHWLeaveVTWeak();
 	pScrn->ValidMode	= fbdevHWValidModeWeak();
 	
-    } else {
+    } else
+#endif /* !__NetBSD__ */
+    {
     	/* Only use FBDev if requested */
 	pGlint->FBDev = FALSE;
         from = X_PROBED;
@@ -1460,10 +1466,12 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 		}
         	GLINTUnmapMem(pScrn);
     	}
-    } else {
+    }
+#ifndef __NetBSD__
+     else {
     	pScrn->videoRam = fbdevHWGetVidmem(pScrn)/1024;
     }
-
+#endif /* !__NetBSD__ */
     pGlint->FbMapSize = pScrn->videoRam * 1024;
 
     /* OVERRIDE videoRam/FbMapSize, for Multiply connected chips to GAMMA */
@@ -2000,10 +2008,12 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 			      LOOKUP_BEST_REFRESH);
     }
 
+#ifndef __NetBSD__
     if (i < 1 && pGlint->FBDev) {
 	fbdevHWUseBuildinMode(pScrn);
 	i = 1;
     }
+#endif /* !__NetBSD__ */
 
     if (i == -1) {
 	GLINTFreeRec(pScrn);
@@ -2102,7 +2112,12 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
     case PCI_VENDOR_3DLABS_CHIP_PERMEDIA2V:
     case PCI_VENDOR_TI_CHIP_PERMEDIA:
     case PCI_VENDOR_3DLABS_CHIP_PERMEDIA:
-	pGlint->pprod = partprodPermedia[pScrn->displayWidth >> 5];
+    	pScrn->displayWidth = (pScrn->displayWidth + 31) & ~31;
+    	pGlint->pprod = -1;
+    	while ((pGlint->pprod == -1) && (pScrn->displayWidth < 2048)) {
+    		pScrn->displayWidth += 32;
+		pGlint->pprod = partprodPermedia[pScrn->displayWidth >> 5];
+	}
 	pGlint->bppalign = bppand[(pScrn->bitsPerPixel>>3)-1];
 	break;
     case PCI_VENDOR_3DLABS_CHIP_500TX:
@@ -2214,6 +2229,15 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 
 	/* set the MULTI width for software rendering */
 	pScrn->displayWidth = inputXSpanBytes / bytesPerPixel;
+    } else {
+	/*
+	 * round pitch up to next multiple of 32
+	 * On most chips this will be enforced anyway by the pprod code, but
+	 * not on pm3, which does seem to have some alignment requirements
+	 * although it's not clear what exactly, so this may be too big.
+	 * With this it works properly with a 1366x768 monitor.
+	 */
+    	pScrn->displayWidth = (pScrn->displayWidth + 31) & ~31;
     }
 
     /* Set the current mode to the first in the list */
@@ -2248,6 +2272,7 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
     }
 
     /* Load XAA if needed */
+#ifdef HAVE_XAA_H    
     if (!pGlint->NoAccel) {
 	if (!xf86LoadSubModule(pScrn, "xaa")) {
 	    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Falling back to shadowfb\n");
@@ -2255,6 +2280,16 @@ GLINTPreInit(ScrnInfoPtr pScrn, int flags)
 	    pGlint->ShadowFB = 1;
 	}
     }
+#else
+    if (!pGlint->NoAccel) {
+	if (!xf86LoadSubModule(pScrn, "exa")) {
+	    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Falling back to shadowfb\n");
+	    pGlint->NoAccel = 1;
+	    pGlint->ShadowFB = 1;
+	}
+    }
+
+#endif
 
     /* Load shadowfb if needed */
     if (pGlint->ShadowFB) {
@@ -2281,6 +2316,7 @@ GLINTMapMem(ScrnInfoPtr pScrn)
     pGlint = GLINTPTR(pScrn);
 
     TRACE_ENTER("GLINTMapMem");
+#ifndef __NetBSD__
     if (pGlint->FBDev) {
     	pGlint->FbBase = fbdevHWMapVidmem(pScrn);
     	if (pGlint->FbBase == NULL)
@@ -2293,7 +2329,8 @@ GLINTMapMem(ScrnInfoPtr pScrn)
 	TRACE_EXIT("GLINTMapMem");
 	return TRUE;
     }
-    
+#endif /* !__NetBSD__ */
+
     /*
      * Map IO registers to virtual address space
      * We always map VGA IO registers - even if we don't need them
@@ -2360,6 +2397,7 @@ GLINTUnmapMem(ScrnInfoPtr pScrn)
     pGlint = GLINTPTR(pScrn);
 
     TRACE_ENTER("GLINTUnmapMem");
+#ifndef __NetBSD__
     if (pGlint->FBDev) {
     	fbdevHWUnmapVidmem(pScrn);
     	pGlint->FbBase = NULL;
@@ -2369,7 +2407,8 @@ GLINTUnmapMem(ScrnInfoPtr pScrn)
 	TRACE_EXIT("GLINTUnmapMem");
     	return TRUE;
     }
-    
+#endif /* !__NetBSD__ */
+
     /*
      * Unmap IO registers to virtual address space
      */ 
@@ -2728,6 +2767,7 @@ GLINTScreenInit(SCREEN_INIT_ARGS_DECL)
     if (!GLINTMapMem(pScrn))
 	return FALSE;
 
+#ifndef __NetBSD__
     if (pGlint->FBDev) {
 	fbdevHWSave(pScrn);
  	if (!fbdevHWModeInit(pScrn, pScrn->currentMode)) {
@@ -2736,6 +2776,7 @@ GLINTScreenInit(SCREEN_INIT_ARGS_DECL)
 		return FALSE;
 	}
     } else
+#endif /* !__NetBSD__ */
     /* Save the current state */
     GLINTSave(pScrn);
 
@@ -2860,12 +2901,20 @@ GLINTScreenInit(SCREEN_INIT_ARGS_DECL)
         case PCI_VENDOR_TI_CHIP_PERMEDIA2:
         case PCI_VENDOR_3DLABS_CHIP_PERMEDIA2:
         case PCI_VENDOR_3DLABS_CHIP_PERMEDIA2V:
+#ifdef HAVE_XAA_H
 	    Permedia2AccelInit(pScreen);
+#else
+	    Pm2InitEXA(pScreen);
+#endif
 	    break;
 	case PCI_VENDOR_3DLABS_CHIP_PERMEDIA3:
 	case PCI_VENDOR_3DLABS_CHIP_PERMEDIA4:
 	case PCI_VENDOR_3DLABS_CHIP_R4:
+#ifdef HAVE_XAA_H
 	    Permedia3AccelInit(pScreen);
+#else
+	    Pm3InitEXA(pScreen);
+#endif
 	    break;
 	case PCI_VENDOR_TI_CHIP_PERMEDIA:
 	case PCI_VENDOR_3DLABS_CHIP_PERMEDIA:
@@ -3036,7 +3085,8 @@ GLINTSwitchMode(SWITCH_MODE_ARGS_DECL)
 
     pGlint = GLINTPTR(pScrn);
     TRACE_ENTER("GLINTSwitchMode");
-	
+
+#ifndef __NetBSD__
     if (pGlint->FBDev) {
 	Bool ret = fbdevHWSwitchMode(SWITCH_MODE_ARGS(pScrn, mode));
 
@@ -3090,6 +3140,7 @@ GLINTSwitchMode(SWITCH_MODE_ARGS_DECL)
 	TRACE_EXIT("GLINTSwitchMode (fbdev ?)");
 	return ret;
     }
+#endif /* !__NetBSD__ */
 
     TRACE_EXIT("GLINTSwitchMode (normal)");
     return GLINTModeInit(pScrn, mode);
@@ -3110,12 +3161,14 @@ GLINTAdjustFrame(ADJUST_FRAME_ARGS_DECL)
 
     pGlint = GLINTPTR(pScrn);
     TRACE_ENTER("GLINTAdjustFrame");
-    
+
+#ifndef __NetBSD__
     if (pGlint->FBDev) {
     	fbdevHWAdjustFrame(ADJUST_FRAME_ARGS(pScrn, x, y));
 	TRACE_EXIT("GLINTAdjustFrame (fbdev)");
 	return;
     }
+#endif /* !__NetBSD__ */
 
     base = ((y * pScrn->displayWidth + x) >> 1) >> pGlint->BppShift;
     if (pScrn->bitsPerPixel == 24) base *= 3;
@@ -3171,9 +3224,11 @@ GLINTEnterVT(VT_FUNC_ARGS_DECL)
 
     TRACE_ENTER("GLINTEnterVT");
 
+#ifndef __NetBSD__
     if (pGlint->FBDev)
     	fbdevHWEnterVT(VT_FUNC_ARGS);
     else
+#endif /* !__NetBSD__ */
     	/* Should we re-save the text mode on each VT enter? */
     	if (!GLINTModeInit(pScrn, pScrn->currentMode))
 		return FALSE;
@@ -3290,9 +3345,12 @@ GLINTCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     if (pScrn->vtSema) {
 	if(pGlint->CursorInfoRec)
     	    pGlint->CursorInfoRec->HideCursor(pScrn);
+#ifndef __NetBSD__
 	if (pGlint->FBDev)
 	    fbdevHWRestore(pScrn);
-	else {	
+	else
+#endif /* !__NetBSD__ */
+	{	
 	    pGlint->STATE = TRUE;
             GLINTRestore(pScrn);
 	}
@@ -3331,8 +3389,10 @@ GLINTFreeScreen(FREE_SCREEN_ARGS_DECL)
 {
     SCRN_INFO_PTR(arg);
     TRACE_ENTER("GLINTFreeScreen");
+#ifndef __NetBSD__
     if (xf86LoaderCheckSymbol("fbdevHWFreeRec"))
         fbdevHWFreeRec(pScrn);
+#endif /* !__NetBSD__ */
     if (xf86LoaderCheckSymbol("RamDacFreeRec"))
 	RamDacFreeRec(pScrn);
     GLINTFreeRec(pScrn);
