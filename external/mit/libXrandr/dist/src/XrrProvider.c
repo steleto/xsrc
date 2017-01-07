@@ -25,6 +25,7 @@
 #include <config.h>
 #endif
 
+#include <limits.h>
 #include <stdio.h>
 #include <X11/Xlib.h>
 /* we need to be able to manipulate the Display structure on events */
@@ -59,12 +60,20 @@ XRRGetProviderResources(Display *dpy, Window window)
       return NULL;
     }
 
-    nbytes = (long) rep.length << 2;
+    if (rep.length < (INT_MAX >> 2)) {
+	nbytes = (long) rep.length << 2;
 
-    nbytesRead = (long) (rep.nProviders * 4);
+	nbytesRead = (long) (rep.nProviders * 4);
 
-    rbytes = (sizeof(XRRProviderResources) + rep.nProviders * sizeof(RRProvider));
-    xrpr = (XRRProviderResources *) Xmalloc(rbytes);
+	rbytes = (sizeof(XRRProviderResources) + rep.nProviders *
+		  sizeof(RRProvider));
+	xrpr = (XRRProviderResources *) Xmalloc(rbytes);
+    } else {
+	nbytes = 0;
+	nbytesRead = 0;
+	rbytes = 0;
+	xrpr = NULL;
+    }
 
     if (xrpr == NULL) {
        _XEatDataWords (dpy, rep.length);
@@ -95,7 +104,8 @@ XRRFreeProviderResources(XRRProviderResources *provider_resources)
     free(provider_resources);
 }
 
-#define ProviderInfoExtra	(SIZEOF(xRRGetProviderInfoReply) - 32)  
+#define ProviderInfoExtra	(SIZEOF(xRRGetProviderInfoReply) - 32)
+#define ProviderInfoExtraWords	(ProviderInfoExtra >> 2)
 XRRProviderInfo *
 XRRGetProviderInfo(Display *dpy, XRRScreenResources *resources, RRProvider provider)
 {
@@ -114,8 +124,25 @@ XRRGetProviderInfo(Display *dpy, XRRScreenResources *resources, RRProvider provi
     req->provider = provider;
     req->configTimestamp = resources->configTimestamp;
 
-    if (!_XReply (dpy, (xReply *) &rep, ProviderInfoExtra >> 2, xFalse))
+    if (!_XReply (dpy, (xReply *) &rep, ProviderInfoExtraWords, xFalse))
     {
+	UnlockDisplay (dpy);
+	SyncHandle ();
+	return NULL;
+    }
+
+    if (rep.length > (INT_MAX >> 2)
+#if ProviderInfoExtraWords > 0
+	|| rep.length < ProviderInfoExtraWords
+#endif
+    )
+    {
+#if ProviderInfoExtraWords > 0
+	if (rep.length < ProviderInfoExtraWords)
+	    _XEatDataWords (dpy, rep.length);
+	else
+#endif
+	    _XEatDataWords (dpy, rep.length - ProviderInfoExtraWords);
 	UnlockDisplay (dpy);
 	SyncHandle ();
 	return NULL;
