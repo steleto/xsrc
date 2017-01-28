@@ -77,6 +77,10 @@
 #include "xf86_OSproc.h"
 #include "xf86Priv.h"
 
+#ifdef XSERVER_LIBPCIACCESS
+#include <sys/mman.h>
+#endif
+
 /* Everything using inb/outb, etc needs "compiler.h" */
 #include "compiler.h"
 
@@ -770,8 +774,10 @@ CHIPSAvailableOptions(int chipid, int busid)
 
 #ifdef HAVE_ISA
     if (busid == BUS_ISA) {
-    	if ((chip == CHIPS_CT64200) || (chip == CHIPS_CT64300)) 
+    	if ((chip == CHIPS_CT64200) || (chip == CHIPS_CT64300)) { 
 	    return ChipsWingineOptions;
+	} else if ((chip >= CHIPS_CT65550) && (chip <= CHIPS_CT69030))
+	    return ChipsHiQVOptions;
     }
 #endif
     if (busid == BUS_PCI) {
@@ -1264,11 +1270,19 @@ CHIPSPreInit(ScrnInfoPtr pScrn, int flags)
     }
     
     if (cPtr->Flags & ChipsAccelSupport) {
+#ifdef HAVE_XAA_H
 	if (!xf86LoadSubModule(pScrn, "xaa")) {
 	    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Falling back to shadowfb\n");
 	    cPtr->Flags &= ~(ChipsAccelSupport);
 	    cPtr->Flags |= ChipsShadowFB;
 	}
+#else
+	if (!xf86LoadSubModule(pScrn, "exa")) {
+	    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Falling back to shadowfb\n");
+	    cPtr->Flags &= ~(ChipsAccelSupport);
+	    cPtr->Flags |= ChipsShadowFB;
+	}
+#endif
     }
 
     if (cPtr->Flags & ChipsShadowFB) {
@@ -1328,8 +1342,8 @@ chipsPreInitHiQV(ScrnInfoPtr pScrn, int flags)
     /* Set pScrn->monitor */
     pScrn->monitor = pScrn->confScreen->monitor;
     
-    /* All HiQV chips support 16/24/32 bpp */
-    if (!xf86SetDepthBpp(pScrn, 0, 0, 0, Support24bppFb | Support32bppFb |
+    /* All HiQV chips support 16/24/32 bpp, default to 16bpp for speed & vram */
+    if (!xf86SetDepthBpp(pScrn, 16, 0, 0, Support24bppFb | Support32bppFb |
 				SupportConvert32to24 | PreferConvert32to24))
 	return FALSE;
     else {
@@ -4062,7 +4076,7 @@ CHIPSScreenInit(SCREEN_INIT_ARGS_DECL)
 	miDCInitialize (pScreen, xf86GetPointerScreenFuncs());
 
     } else
-#endif /* HAVE_ISA */
+#endif /* USE_MIBANK */
     {
     /* !!! Only support linear addressing for now. This might change */
 	/* Setup pointers to free space in video ram */
@@ -4196,17 +4210,22 @@ CHIPSScreenInit(SCREEN_INIT_ARGS_DECL)
 
 	    xf86InitFBManager(pScreen, &AvailFBArea); 
 	}
-#ifdef HAVE_XAA_H
 	if (cPtr->Flags & ChipsAccelSupport) {
 	    if (IS_HiQV(cPtr)) {
+#ifdef HAVE_XAA_H
 		CHIPSHiQVAccelInit(pScreen);
-	    } else if (cPtr->UseMMIO) {
+#else
+		CHIPSInitEXA(pScreen);
+#endif
+	    }
+#ifdef HAVE_XAA_H
+	      else if (cPtr->UseMMIO) {
 		CHIPSMMIOAccelInit(pScreen);
 	    } else {
 		CHIPSAccelInit(pScreen);
 	    }
-	}
 #endif
+	}
 	xf86SetBackingStore(pScreen);
 #ifdef ENABLE_SILKEN_MOUSE
 	xf86SetSilkenMouse(pScreen);
@@ -6861,14 +6880,16 @@ chipsMapMem(ScrnInfoPtr pScrn)
 						   PCI_DEV_MAP_FLAG_WRITABLE,
 						   result);
 		    } else {
-			err = pci_device_map_legacy(cPtr->PciInfo,
-						    cPtr->IOAddress,
-						    0x00020000U,
-						    PCI_DEV_MAP_FLAG_WRITABLE,
-						    result);
+			*result = mmap(NULL,
+			           0x00020000U,
+			           PROT_READ | PROT_WRITE,
+			           MAP_SHARED,
+			           xf86Info.consoleFd,
+			           cPtr->IOAddress);
+			err = (*result == MAP_FAILED);
 		    }
 		    if (err) {
-			xf86Msg(X_ERROR, "PCI mmap failed\n");
+			xf86Msg(X_ERROR, "PCI mmap registers failed\n");
 		        return FALSE;
 		    }
 		}
@@ -6894,11 +6915,13 @@ chipsMapMem(ScrnInfoPtr pScrn)
 						   PCI_DEV_MAP_FLAG_WRITABLE,
 						   result);
 		    } else {
-			err = pci_device_map_legacy(cPtr->PciInfo,
-						    cPtr->IOAddress,
-						    0x00010000U,
-						    PCI_DEV_MAP_FLAG_WRITABLE,
-						    result);
+			*result = mmap(NULL,
+			           0x00010000U,
+			           PROT_READ | PROT_WRITE,
+			           MAP_SHARED,
+			           xf86Info.consoleFd,
+			           cPtr->IOAddress);
+			err = (*result == MAP_FAILED);
 		    }
 		    if (err) {
 			xf86Msg(X_ERROR, "PCI mmap failed\n");
@@ -6950,12 +6973,13 @@ chipsMapMem(ScrnInfoPtr pScrn)
 					   PCI_DEV_MAP_FLAG_WRITE_COMBINE,
 					   result);
 	    } else
-		err = pci_device_map_legacy(cPtr->PciInfo,
-					    Addr,
-					    Map,
-					    PCI_DEV_MAP_FLAG_WRITABLE |
-					    PCI_DEV_MAP_FLAG_WRITE_COMBINE,
-					    result);
+			*result = mmap(NULL,
+			           Map,
+			           PROT_READ | PROT_WRITE,
+			           MAP_SHARED,
+			           xf86Info.consoleFd,
+			           Addr);
+			err = (*result == MAP_FAILED);
 	    if (err) {
 		xf86Msg(X_ERROR, "PCI mmap fb failed\n");
 		return FALSE;
