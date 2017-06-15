@@ -223,8 +223,8 @@ _fs_add_rep_log (FSFpePtr conn, fsGenericReply *rep)
             fprintf (stderr, "Error: %d Request: %s\n",                 \
                      ((fsError *)rep)->request, #name);                 \
         else                                                            \
-            fprintf (stderr, "Bad Length for %s Reply: %d %s %d\n",     \
-                     #name, rep->length, op, LENGTHOF(name));           \
+            fprintf (stderr, "Bad Length for %s Reply: %u %s %d\n",     \
+                     #name, (unsigned) rep->length, op, LENGTHOF(name));\
     }                                                                   \
 } while (0)
 
@@ -631,8 +631,8 @@ fs_get_reply (FSFpePtr conn, int *error)
      */
     if (rep->length > MAX_REPLY_LENGTH)
     {
-	ErrorF("fserve: reply length %d > MAX_REPLY_LENGTH, disconnecting"
-	       " from font server\n", rep->length);
+	ErrorF("fserve: reply length %ld > MAX_REPLY_LENGTH, disconnecting"
+	       " from font server\n", (long)rep->length);
 	_fs_connection_died (conn);
 	*error = FSIO_ERROR;
 	return 0;
@@ -915,8 +915,8 @@ fs_read_query_info(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
 	ret = -1;
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsQueryXInfo: bufleft (%ld) / SIZEOF(fsPropOffset) < %d\n",
-		bufleft, pi->num_offsets);
+		"fsQueryXInfo: bufleft (%ld) / SIZEOF(fsPropOffset) < %u\n",
+		bufleft, (unsigned) pi->num_offsets);
 #endif
 	goto bail;
     }
@@ -929,8 +929,8 @@ fs_read_query_info(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
 	ret = -1;
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsQueryXInfo: bufleft (%ld) < data_len (%d)\n",
-		bufleft, pi->data_len);
+		"fsQueryXInfo: bufleft (%ld) < data_len (%u)\n",
+		bufleft, (unsigned) pi->data_len);
 #endif
 	goto bail;
     }
@@ -1063,8 +1063,8 @@ fs_read_extent_info(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
 			    / LENGTHOF(fsXCharInfo))) {
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsQueryXExtents16: numExtents (%d) > (%d - %d) / %d\n",
-		numExtents, rep->length,
+		"fsQueryXExtents16: numExtents (%d) > (%u - %d) / %d\n",
+		numExtents, (unsigned) rep->length,
 		LENGTHOF(fsQueryXExtents16Reply), LENGTHOF(fsXCharInfo));
 #endif
 	pCI = NULL;
@@ -1946,8 +1946,8 @@ fs_read_glyphs(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
     {
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsQueryXBitmaps16: num_chars (%d) > bufleft (%ld) / %d\n",
-		rep->num_chars, bufleft, SIZEOF (fsOffset32));
+		"fsQueryXBitmaps16: num_chars (%u) > bufleft (%ld) / %d\n",
+		(unsigned) rep->num_chars, bufleft, SIZEOF (fsOffset32));
 #endif
 	err = AllocError;
 	goto bail;
@@ -1960,8 +1960,8 @@ fs_read_glyphs(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
     {
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsQueryXBitmaps16: nbytes (%d) > bufleft (%ld)\n",
-		rep->nbytes, bufleft);
+		"fsQueryXBitmaps16: nbytes (%u) > bufleft (%ld)\n",
+		(unsigned) rep->nbytes, bufleft);
 #endif
 	err = AllocError;
 	goto bail;
@@ -2567,8 +2567,8 @@ fs_read_list_info(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
     if (pi->num_offsets > (bufleft / SIZEOF (fsPropOffset))) {
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsListFontsWithXInfo: offset length (%d * %d) > bufleft (%ld)\n",
-		pi->num_offsets, (int) SIZEOF (fsPropOffset), bufleft);
+		"fsListFontsWithXInfo: offset length (%u * %d) > bufleft (%ld)\n",
+		(unsigned) pi->num_offsets, (int) SIZEOF (fsPropOffset), bufleft);
 #endif
 	err = AllocError;
 	goto done;
@@ -2579,8 +2579,8 @@ fs_read_list_info(FontPathElementPtr fpe, FSBlockDataPtr blockrec)
     if (pi->data_len > bufleft) {
 #ifdef DEBUG
 	fprintf(stderr,
-		"fsListFontsWithXInfo: data length (%d) > bufleft (%ld)\n",
-		pi->data_len, bufleft);
+		"fsListFontsWithXInfo: data length (%u) > bufleft (%ld)\n",
+		(unsigned) pi->data_len, bufleft);
 #endif
 	err = AllocError;
 	goto done;
@@ -2850,14 +2850,12 @@ _fs_client_access (FSFpePtr conn, pointer client, Bool sync)
 	if (crac.num_auths == 0) {
 	    authorizations = padding;
 	    authlen = 4;
-	} else {
-	    authlen = (authlen + 3) & ~0x3;
 	}
 	crac.length = (sizeof (fsCreateACReq) + authlen) >> 2;
 	crac.acid = cur->acid;
 	_fs_add_req_log(conn, FS_CreateAC);
 	_fs_write(conn, (char *) &crac, sizeof (fsCreateACReq));
-	_fs_write(conn, authorizations, authlen);
+	_fs_write_pad(conn, authorizations, authlen);
 	/* ignore reply; we don't even care about it */
 	conn->curacid = 0;
 	cur->auth_generation = client_auth_generation(client);

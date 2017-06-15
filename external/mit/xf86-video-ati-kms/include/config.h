@@ -39,6 +39,9 @@
 /* Define to 1 if you have the <present.h> header file. */
 /* #define HAVE_PRESENT_H 1 */
 
+/* Have RegionDuplicate API */
+#define HAVE_REGIONDUPLICATE 1
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
 
@@ -86,7 +89,7 @@
 #define PACKAGE_NAME "xf86-video-ati"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "xf86-video-ati 7.7.0"
+#define PACKAGE_STRING "xf86-video-ati 7.8.0"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "xf86-video-ati"
@@ -95,13 +98,13 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "7.7.0"
+#define PACKAGE_VERSION "7.8.0"
 
 /* Major version of this package */
 #define PACKAGE_VERSION_MAJOR 7
 
 /* Minor version of this package */
-#define PACKAGE_VERSION_MINOR 7
+#define PACKAGE_VERSION_MINOR 8
 
 /* Patch version of this package */
 #define PACKAGE_VERSION_PATCHLEVEL 0
@@ -116,7 +119,7 @@
 #define USE_SYS_ENDIAN_H 1
 
 /* Version number of package */
-#define VERSION "7.7.0"
+#define VERSION "7.8.0"
 
 /* Enable large inode numbers on Mac OS X 10.5.  */
 #ifndef _DARWIN_USE_64_BIT_INODE

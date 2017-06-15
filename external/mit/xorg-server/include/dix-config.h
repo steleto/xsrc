@@ -128,6 +128,9 @@
 /* Build a standalone xpbproxy */
 /* #undef STANDALONE_XPBPROXY */
 
+/* Define to 1 if you have the `bsd' library (-lbsd). */
+/* #undef HAVE_LIBBSD */
+
 /* Define to 1 if you have the `m' library (-lm). */
 #define HAVE_LIBM 1
 
@@ -157,6 +160,9 @@
 
 /* Define to 1 if you have the <rpcsvc/dbm.h> header file. */
 /* #undef HAVE_RPCSVC_DBM_H */
+
+/* Define to 1 if you have the `arc4random_buf' function. */
+#define HAVE_ARC4RANDOM_BUF 1
 
 /* Define to use libc SHA1 functions */
 #define HAVE_SHA1_IN_LIBC 1
@@ -234,6 +240,9 @@
 
 /* Define to 1 if you have the <sys/utsname.h> header file. */
 #define HAVE_SYS_UTSNAME_H 1
+
+/* Define to 1 if you have the `timingsafe_memcmp' function. */
+/* #undef HAVE_TIMINGSAFE_MEMCMP */
 
 /* Define to 1 if you have the <tslib.h> header file. */
 /* #undef HAVE_TSLIB_H */

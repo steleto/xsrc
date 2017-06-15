@@ -265,50 +265,45 @@ wsPreInit12(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
 		rc = BadValue;
 		goto fail;
 	}
-	if (priv->type == WSMOUSE_TYPE_TPANEL) {
-		pInfo->type_name = XI_TOUCHSCREEN;
-		priv->raw = xf86SetBoolOption(pInfo->options, "Raw", 1);
-	} else {
+
+	/* assume screen coordinate space until proven wrong */
+	priv->min_x = 0;
+	priv->max_x = screenInfo.screens[priv->screen_no]->width - 1;
+	priv->min_y = 0;
+	priv->max_y = screenInfo.screens[priv->screen_no]->height - 1;
+	priv->raw = 0;
+
+	/* don't rely on the device type - we may be listening to a mux */		
+	if (ioctl(pInfo->fd, WSMOUSEIO_GCALIBCOORDS,
+		&priv->coords) != 0) {
+		/* can't get absolute coordinate space - assume mouse */
 		pInfo->type_name = XI_MOUSE;
-		priv->raw = xf86SetBoolOption(pInfo->options, "Raw", 0);
-		if (priv->raw) {
-			xf86Msg(X_WARNING, "Device is not a touch panel,"
-			    "ignoring 'Option \"Raw\"'\n");
-			priv->raw = 0;
-		}
+	} else if (priv->coords.samplelen == WSMOUSE_CALIBCOORDS_RESET) {
+		/*
+		 * we're getting raw coordinates - update accordingly and hope
+		 * that there is no other absolute positioning device on the
+		 * same mux
+		 */
+		priv->min_x = priv->coords.minx;
+		priv->max_x = priv->coords.maxx;
+		priv->min_y = priv->coords.miny;
+		priv->max_y = priv->coords.maxy;
+		priv->raw = 1;
+		pInfo->type_name = XI_TOUCHSCREEN;
+	} else {
+		/*
+		 * touchscreen not in raw mode, should send us screen
+		 * coordinates 
+		 */
+		pInfo->type_name = XI_TOUCHSCREEN;
 	}
+
 	if (priv->raw) {
 		xf86Msg(X_CONFIG,
 		    "%s device will work in raw mode\n",
 		    pInfo->name);
 	}
 
-#ifndef __NetBSD__
-	if (priv->type == WSMOUSE_TYPE_TPANEL && priv->raw) {
-		if (ioctl(pInfo->fd, WSMOUSEIO_GCALIBCOORDS,
-			&priv->coords) != 0) {
-			xf86Msg(X_ERROR, "GCALIBCOORS failed %s\n",
-			    strerror(errno));
-			wsClose(pInfo);
-			rc = BadValue;
-			goto fail;
-		}
-
-		/* get default coordinate space from kernel */
-		priv->min_x = priv->coords.minx;
-		priv->max_x = priv->coords.maxx;
-		priv->min_y = priv->coords.miny;
-		priv->max_y = priv->coords.maxy;
-	} else {
-#endif
-		/* in calibrated mode, coordinate space, is screen coords */
-		priv->min_x = 0;
-		priv->max_x = screenInfo.screens[priv->screen_no]->width - 1;
-		priv->min_y = 0;
-		priv->max_y = screenInfo.screens[priv->screen_no]->height - 1;
-#ifndef __NetBSD__
-	}
-#endif
 	/* Allow options to override this */
 	priv->min_x = xf86SetIntOption(pInfo->options, "MinX", priv->min_x);
 	xf86Msg(X_INFO, "%s minimum x position: %d\n",
